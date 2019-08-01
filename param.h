@@ -39,18 +39,18 @@ double damping_ratio = .05625; //gamma*t_r
 
 int nnodes = 180;    //number of nodes
 const double Node_mass = 6.; // mass of nodes
-int nboids = 140;   //number of boids
+int nboids = 300;   //number of boids
 int nb; //dont change (variable boid size incase boids are deleted)
 double M;       //boid mass 
 double boidSpeed = 4.;
-const int nslider = 6;      //number of sliders
+const int nslider = 5;      //number of sliders
 
 //Boundary parameters
 const double rad_fac = 0.75; // sets radius of node boundary 
 const double Dx = 1.; // grid spacing
 double Ks = 3*10 / Dx; // spring constant
 const double Gammas = 0.0; //  damping parm
-double Gamma_node = 0.001; // damping on nodes (force depends on velocity)
+double Gamma_node = .001; // damping on nodes (force depends on velocity)
 
 //node force amplitudes
 double force_amp = 10.; // for interactions between boids and nodes
@@ -85,6 +85,11 @@ const double dt = .3;
 
 //boundary force amplitude
 double hinge_amp = 600 * Node_mass; //N m^2 
+
+//length/width of boid icons
+int sizeScale = 1;  //scale length with velocity
+double boidLength = .01;
+double boidWidth = .015;
 
 //convertions
 void convert() {

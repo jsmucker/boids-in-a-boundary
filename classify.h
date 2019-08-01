@@ -25,7 +25,6 @@ struct data {
     double pr[2]; // r, theta
     double v[2];
     double vr[2]; //r,theta
-    double total_r;
     double force;
 };
 
@@ -56,18 +55,18 @@ void loadFile();
 double wspeed_ratio();
 
 void setupSession() {
-    session.param[0] = &Align_force;
+    session.param[0] = &D_repel;
     session.start[0] = 0;
-    session.inc[0] = .02;
-    session.param[1] = &Repel_force;
+    session.inc[0] = 11;
+    session.param[1] = &D_align;
     session.start[1] = 0;
-    session.inc[1] = 2.4;
-    //    session.param[2] = &mass_ratio;
-    //    session.start[2] = 100.;
-    //    session.inc[2] = -9.999;
+    session.inc[1] = 11;
+    //        session.param[2] = &mass_ratio;
+    //        session.start[2] = 100.;
+    //        session.inc[2] = -10;
     session.param[2] = &hinge_amp;
-    session.start[2] = 20 * Node_mass;
-    session.inc[2] = (580 * Node_mass) / 10.;
+    session.start[2] = 0. * Node_mass;
+    session.inc[2] = (600. * Node_mass) / 10.;
 
     for (int i = 0; i < numsession; i++) {
         *session.param[i] = session.start[i];
@@ -92,9 +91,9 @@ int categorize(struct flock *f, struct massSpringSystem *mss, FILE *fp) {
     fillData(boid, node, f, mss);
 
     //perform checks. Note order is important
-    char t1;
-    char t2;
-    int flag = 0;
+    char t1 = 'E';
+    char t2 = 'E';
+    int numSprockets = 0;
 
     //print tags to file
     if (nb < .25 * nboids) {
@@ -102,24 +101,27 @@ int categorize(struct flock *f, struct massSpringSystem *mss, FILE *fp) {
     }
     if (oval_rotation(node)) {
         t1 = 'R';
+        numSprockets = sprocket(node);
+        if (numSprockets) { //else
+            t1 = 'S';
+        }
     }
+
     if (bullet(boid)) {
         t2 = 'B';
-    } else if (sprocket(node)) {
-        t2 = 'S';
     } else if (densityGrad(boid)) {
         t2 = 'W';
     } else if (circulation(boid)) {
         t2 = 'C';
     } else if (gas(boid)) {
         t2 = 'G';
-    } else {
+    } else if (t1 == 'E' && t2 == 'E') {
         return 0;
     }
 
     printf("\n\n");
     if (fp)
-        fprintf(fp, "TAGS: %c|%c", t1, t2);
+        fprintf(fp, "TAGS: %c|%c    %d", t1, t2, numSprockets);
     return 1;
 }
 
@@ -157,56 +159,61 @@ void rank(double arr[], double rank[], int index_rank[], int size) {
 
 int sprocket(struct data node[]) {
     //find coefficients
-    double An[100] = {0};
-    double Bn[100] = {0};
-    double Cn[100] = {0};
-    double max[100] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
-    int max_int[100] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
+    double An[30] = {0};
+    double Bn[30] = {0};
+    double Cn[30] = {0};
+    double max[30] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
+    int max_int[30] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
     int index = 0;
-    for (int i = 0; i < 100; i++) {
+    for (int i = 0; i < 30; i++) {
         for (int j = 0; j < nnodes; j++) {
-            double dtheta;
-            if (j < nnodes - 1)
-                dtheta = (node[j].pr[1] - node[j + 1].pr[1]);
-            else
-                dtheta = (node[j].pr[1] - node[0].pr[1]);
+            double dtheta = node[j].pr[1];
 
             //sometimes the endpoints get messed up. Apply correction if neccessary
             if (dtheta > 3) dtheta -= 2 * M_PI;
             else if (dtheta<-3) dtheta += 2 * M_PI;
 
-            An[i] += M_PI * dtheta * node[j].pr[0] * sin(i * node[j].pr[1]) / (node[0].total_r);
-            Bn[i] += M_PI * dtheta * node[j].pr[0] * cos(i * node[j].pr[1]) / (node[0].total_r);
+            An[i] += node[j].pr[0] * sin(i * dtheta) / (nnodes * big_radius);
+            Bn[i] += node[j].pr[0] * cos(i * dtheta) / (nnodes * big_radius);
         }
+
         Cn[i] = sqrt(An[i] * An[i] + Bn[i] * Bn[i]);
     }
 
     //sort coefficients and cancel out noise
-    rank(Cn, max, max_int, 100);
+    rank(Cn, max, max_int, 30);
 
-    for (int i = 0; i < 100; i++) {
-        if (max[i] < max[0]*.025) max_int[i] = -1;
-        //printf("max_int: %d\tMAg: %f\n", max_int[i], max[i]);
+    int numAmp = 0;
+    for (int i = 0; i < 30; i++) {
+        if (max[i] < max[0]*.07) max_int[i] = -1;
+        else {
+            numAmp++;
+            //printf("max_int: %d\tMag: %f\n", max_int[i], max[i]);
+        }
 
     }
 
     //categorize
+    //first check if there are a lot of high amplitudes. This identifies a junk sprocket
+    if (max_int[1] >= 3) {
+        printf("SPROCKET\n");
+        return max_int[1];
+    } else if (max[2] + max[1]*.5 >= max[1] && max_int[2] >= 3) {
+        printf("SPROCKET\n");
+        return max_int[2];
+    } else return 0;
+
     //check for sprocket first
-    int flag = 0;
-    for (int i = 10; i > -1; i--) {
-        if (max_int[i] > 5) {
-            printf("Sprocket\n");
-            flag = 1;
-            return 1;
-        }
-    }
-    return 0;
+    //    for (int i = 10; i > -1; i--) {
+    //        if (max_int[i] > 4) {
+    //            printf("Sprocket\n");
+    //            return 1;
+    //        }
+    //    }
+    //    return 0;
 }
 
 void fillData(struct data boid[], struct data node[], struct flock *f, struct massSpringSystem *mss) {
-    boid[0].total_r = 0;
-    node[0].total_r = 0;
-
     //nodes
     for (int i = 0; i < nnodes; i++) {
         for (int j = 0; j < 2; j++) {
@@ -244,8 +251,6 @@ void fillData(struct data boid[], struct data node[], struct flock *f, struct ma
         //sometimes the endpoints get messed up. Apply correction if neccessary
         if (dtheta > 3) dtheta -= 2 * M_PI;
         else if (dtheta<-3) dtheta += 2 * M_PI;
-
-        node[0].total_r += node[i].pr[0] * dtheta;
     }
     //boids
     for (int i = 0; i < nb; i++) {
@@ -262,33 +267,28 @@ void fillData(struct data boid[], struct data node[], struct flock *f, struct ma
         boid[i].vr[1] = acos(boid[i].v[0] / boid[i].vr[0]);
         if (boid[i].v[1] < 0)boid[i].vr[1] *= -1;
 
-        boid[0].total_r += boid[i].pr[0];
     }
 }
 
 int bullet(struct data boid[]) {
-    //start by averaging all velocities to find polarization
-    double avg[2] = {0};
+    //find average velocity
+    double p[2] = {0};
     for (int i = 0; i < nb; i++) {
-        avg[0] += boid[i].v[0];
-        avg[1] += boid[i].v[1];
+        add(p, boid[i].v, p);
     }
-    double z[3] = {0, 0, 1};
-    double r[2] = {0};
+    s_mult(p, 1. / nb);
 
-    cross(avg, z, r);
-    normalize(r);
-    normalize(avg);
-
-    //now compare to average velocity in rvec's direction
-    double norm_avg = 0;
-    double compare = 0;
+    double stdev = 0;
+    //find standard deviation
     for (int i = 0; i < nb; i++) {
-        norm_avg += fabs(boid[i].v[0] * r[0] + boid[i].v[1] * r[1]);
-        compare += fabs(boid[i].v[0] * avg[0] + boid[i].v[1] * avg[1]);
+        double diff[2] = {0};
+        subtract(boid[i].v, p, diff);
+        stdev += mag(diff) * mag(diff);
     }
+    stdev /= (nb - 1);
+    stdev = sqrt(stdev);
 
-    if (norm_avg < .25 * compare) {
+    if (stdev < .1 * boidSpeed) {
         printf("BULLET\n");
         return 1;
     }
@@ -310,7 +310,7 @@ int densityGrad(struct data boid[]) {
         }
     }
 
-    if (count > .65 * nb) {
+    if (count > .75 * nb) {
         printf("WANDERING FLOCK");
         return 1;
     } else return 0;
@@ -319,7 +319,6 @@ int densityGrad(struct data boid[]) {
 int oval_rotation(struct data node[]) {
     //now find tangent component of velocity to curve
     double tangent_v = 0;
-    double total_mag = 0;
     for (int i = 0; i < nnodes; i++) {
         //start by finding normal vector to radial position
         double r[2];
@@ -329,10 +328,10 @@ int oval_rotation(struct data node[]) {
         cross(r, z, p);
         normalize(p);
         tangent_v += dot(node[i].v, p);
-        total_mag += mag(node[i].v);
     }
+    tangent_v /= nnodes;
 
-    if (fabs(tangent_v) > .2 * total_mag) {
+    if (fabs(tangent_v) > .03 * boidSpeed) {
         printf("ROTATION\n");
         return 1;
     } else return 0;
@@ -340,7 +339,6 @@ int oval_rotation(struct data node[]) {
 
 int circulation(struct data boid[]) {
     double tangent_v = 0;
-    double total_mag = 0;
     for (int i = 0; i < nnodes; i++) {
         double r[2];
         double z[3] = {0, 0, 1};
@@ -350,9 +348,10 @@ int circulation(struct data boid[]) {
         normalize(p);
 
         tangent_v += dot(boid[i].v, p);
-        total_mag += mag(boid[i].v);
     }
-    if (fabs(tangent_v) > .5 * total_mag) {
+    tangent_v /= nb;
+
+    if (fabs(tangent_v) > .2 * boidSpeed) {
         printf("CIRCULATING\n");
         return 1;
     }
@@ -362,7 +361,6 @@ int circulation(struct data boid[]) {
 int gas(struct data boid[]) {
     //check tangential velocities
     double total_vt = 0;
-    double mag_v = 0;
     double v_[2] = {0};
 
     for (int i = 0; i < nb; i++) {
@@ -374,16 +372,11 @@ int gas(struct data boid[]) {
         normalize(t);
 
         total_vt += dot(t, v);
-        mag_v += mag(v);
-        for (int j = 0; j < 2; j++) {
-            v_[j] += boid[i].v[j];
-        }
     }
 
-    mag_v /= nb;
     s_mult(v_, 1. / nb);
 
-    if (fabs(total_vt) < mag_v * .2 || mag(v_) < mag_v * .2) {
+    if (fabs(total_vt) < boidSpeed * .2 /*|| mag(v_) < mag_v * .2*/) {
         printf("GAS\n");
         return 1;
     } else return 0;
@@ -491,7 +484,7 @@ void loadFile() {
     //get hinge_amp
     fscanf(fp, "%s%f", label, &dval);
     printf("%s %f\n", label, dval);
-   // hinge_amp = mass_ratio * M * boidSpeed * boidSpeed * big_radius * dval;
+    // hinge_amp = mass_ratio * M * boidSpeed * boidSpeed * big_radius * dval;
     printf("%f\n\n", hinge_amp / Node_mass);
     fgets(dump, 100, fp);
 
@@ -506,6 +499,7 @@ void loadFile() {
 }
 
 //not currently correct
+
 double wspeed_ratio() {
     double swim_p = (nb / (2 * M_PI * big_radius * big_radius)) * boidSpeed * boidSpeed * 1. / Align_force;
     return swim_p * D_repel * D_repel / hinge_amp;

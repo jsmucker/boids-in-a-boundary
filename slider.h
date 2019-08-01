@@ -30,8 +30,8 @@ struct slider {
 };
 
 struct slider s_array[nslider];
-char *sliderNames[] = {"Repel_force: ", "Align Force: ", "D_repel: ", "D_align: ", "hinge_amp: ", "ks: ", "Mass_RATIO : "};
-double *p[] = {&Repel_force, &Align_force, &D_repel, &D_align, &hinge_amp, &Ks, &mass_ratio};
+char *sliderNames[] = {"Repel_force: ", "Align Force: ", "D_repel: ", "D_align: ", "hinge_amp: "};
+double *p[] = {&Repel_force, &Align_force, &D_repel, &D_align, &hinge_amp, &boidLength};
 
 void setupSliders() {
     double pad = .01;
